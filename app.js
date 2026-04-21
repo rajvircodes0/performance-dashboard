@@ -16,6 +16,7 @@ const els = {
   resultsTable: document.getElementById('resultsTable'),
   resultCount: document.getElementById('resultCount'),
   dataSummary: document.getElementById('dataSummary'),
+  loadError: document.getElementById('loadError'),
   modal: document.getElementById('staffModal'),
   staffDetail: document.getElementById('staffDetail'),
   closeModal: document.getElementById('closeModal'),
@@ -113,9 +114,7 @@ function buildChart(id, type, data, options = {}) {
     options: {
       responsive: true,
       maintainAspectRatio: false,
-      plugins: {
-        legend: { labels: { color: '#dfe8ff' } }
-      },
+      plugins: { legend: { labels: { color: '#dfe8ff' } } },
       scales: {
         x: { ticks: { color: '#bcd0f3' }, grid: { color: 'rgba(255,255,255,0.06)' } },
         y: { ticks: { color: '#bcd0f3' }, grid: { color: 'rgba(255,255,255,0.06)' } }
@@ -155,9 +154,7 @@ function renderCharts(rows) {
   charts.designation = buildChart('designationChart', 'doughnut', {
     labels: designationGroups.map(d => d.label),
     datasets: [{ data: designationGroups.map(d => d.value) }]
-  }, {
-    scales: {}
-  });
+  }, { scales: {} });
 
   const byPerson = Object.values(groupBy(rows, 'Staff Name')).map(group => ({
     name: group[0]['Staff Name'],
@@ -167,9 +164,7 @@ function renderCharts(rows) {
   charts.topPerformers = buildChart('topPerformersChart', 'bar', {
     labels: byPerson.map(d => d.name),
     datasets: [{ label: 'Total Revenue', data: byPerson.map(d => d.revenue) }]
-  }, {
-    indexAxis: 'y'
-  });
+  }, { indexAxis: 'y' });
 }
 
 function renderTable(rows) {
@@ -201,14 +196,12 @@ function renderKpiLibrary() {
 
 function openStaffModal(row) {
   const renderList = (keys) => keys.map(k => `<li><span>${k}</span><strong>${typeof row[k] === 'number' ? fmtNumber(row[k]) : (row[k] || 0)}</strong></li>`).join('');
-
   els.staffDetail.innerHTML = `
     <div>
       <p class="eyebrow">Staff KPI detail</p>
       <h2 style="margin:0 0 8px">${row['Staff Name'] || 'Unknown Staff'}</h2>
       <p class="hero-copy">Tahoe ID: ${row['Tahoe id'] || '-'} · ERP / HRMS ID: ${row['HRMS ID'] || '-'} · Month: ${row['Month'] || '-'}</p>
     </div>
-
     <div class="detail-grid">
       <div class="detail-card">
         <h4>Profile</h4>
@@ -223,7 +216,6 @@ function openStaffModal(row) {
           <dt>Vintage</dt><dd>${row['Vintage Category'] || '-'}</dd>
         </dl>
       </div>
-
       <div class="detail-card">
         <h4>Headline KPIs</h4>
         <dl class="definition-list">
@@ -236,7 +228,6 @@ function openStaffModal(row) {
         </dl>
       </div>
     </div>
-
     <div class="kpi-columns">
       <div class="kpi-box">
         <h4>Compensation KPIs</h4>
@@ -255,9 +246,7 @@ function openStaffModal(row) {
   els.modal.classList.remove('hidden');
 }
 
-function closeModal() {
-  els.modal.classList.add('hidden');
-}
+function closeModal() { els.modal.classList.add('hidden'); }
 
 function downloadFiltered(rows) {
   const blob = new Blob([JSON.stringify(rows, null, 2)], { type: 'application/json' });
@@ -276,22 +265,7 @@ function render() {
   renderTable(rows);
 }
 
-async function init() {
-  const res = await fetch('./data/dashboard-data.json');
-  const payload = await res.json();
-  DATA = payload.records;
-  META = payload.metadata;
-
-  fillSelect(els.month, uniqueValues('Month'), 'All Months');
-  fillSelect(els.status, uniqueValues('Status'), 'All Status');
-  fillSelect(els.designation, uniqueValues('Designation'), 'All Designations');
-  fillSelect(els.location, uniqueValues('Location'), 'All Locations');
-  fillSelect(els.product, uniqueValues('Product'), 'All Products');
-
-  els.dataSummary.textContent = `Built from ${META.sourceWorkbook}. The dataset contains ${fmtNumber(META.recordCount)} records across ${fmtNumber(META.months.length)} monthly periods, with searchable staff-level performance KPIs and filtered drilldowns.`;
-  renderKpiLibrary();
-  render();
-
+function wireEvents() {
   [els.search, els.month, els.status, els.designation, els.location, els.product]
     .forEach(el => el.addEventListener('input', render));
   els.clear.addEventListener('click', () => {
@@ -306,6 +280,36 @@ async function init() {
   els.closeModal.addEventListener('click', closeModal);
   els.modalCloseBackdrop.addEventListener('click', closeModal);
   els.downloadJson.addEventListener('click', () => downloadFiltered(applyFilters()));
+}
+
+function initializeFromPayload(payload) {
+  DATA = payload.records || [];
+  META = payload.metadata || {};
+  fillSelect(els.month, uniqueValues('Month'), 'All Months');
+  fillSelect(els.status, uniqueValues('Status'), 'All Status');
+  fillSelect(els.designation, uniqueValues('Designation'), 'All Designations');
+  fillSelect(els.location, uniqueValues('Location'), 'All Locations');
+  fillSelect(els.product, uniqueValues('Product'), 'All Products');
+  els.dataSummary.textContent = `Built from ${META.sourceWorkbook}. The dataset contains ${fmtNumber(META.recordCount)} records across ${fmtNumber((META.months || []).length)} monthly periods.`;
+  renderKpiLibrary();
+  wireEvents();
+  render();
+}
+
+async function init() {
+  try {
+    if (window.__DASHBOARD_PAYLOAD__) {
+      initializeFromPayload(window.__DASHBOARD_PAYLOAD__);
+      return;
+    }
+    const res = await fetch('./data/dashboard-data.json');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const payload = await res.json();
+    initializeFromPayload(payload);
+  } catch (err) {
+    console.error(err);
+    els.loadError.textContent = 'Data did not load. Re-upload the fixed package files to GitHub and make sure index.html is in the repo root.';
+  }
 }
 
 init();

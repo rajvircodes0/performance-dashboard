@@ -106,3 +106,7 @@ Your dashboard will be published as a static site.
 - `styles.css`
 - `app.js`
 - `data/dashboard-data.json`
+
+
+## Deployment note
+This fixed version includes inline data loading for more reliable GitHub Pages deployment.
